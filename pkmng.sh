@@ -1,10 +1,7 @@
 #!/bin/bash
 
-#whiptail --msgbox --title "This is a title" --backtitle "I'm a backtitle" --fb "Hello, world!" 10 50
-
 name="GOAT package installer"
 working_directory="/usr/local/src"
-
 
 echo "checking permissions..." 
 permissions=$(stat -c '%a' $working_directory)
@@ -25,6 +22,31 @@ input_package_name=$(whiptail --inputbox --title "$name" "Choose a package name"
 function clean_up(){
     package=$working_directory/$input_package_name
     rm -rf --no-preserve-root "$package"
+}
+
+function check_if_runned_as_root(){
+    if [ "$EUID" -ne 0 ]    # Check if user is root in order for the script to work.
+    then 
+        echo "Please run as root"
+        clean_up
+        exit
+    fi
+}
+
+function install_package_from_source(){
+    extraction_directory=$(ls $working_directory/"$input_package_name"/)
+    cd $working_directory/"$input_package_name"/"$extraction_directory" || exit
+    ./configure
+    if cd $working_directory/"$input_package_name"/"$extraction_directory" || exit; make; then
+        echo "Dependency requirement met"
+        if make install; then
+            echo "Installation successful"
+            exit 0;
+        fi
+    else
+        echo "Install required dependencies and run script again"
+        exit 6
+    fi
 }
 
 # Create working directory for package installation files
@@ -54,53 +76,89 @@ installation_method=$(whiptail \
         case $local_or_remote_source in
         1)
             # Local tarball installation
-            path_to_local_tarball=$(whiptail --inputbox --title "Installation with dpkg/rpm" "Path to local tarball" 10 70 3>&1 1>&2 2>&3)
-        ;;
+            path_to_local_tarball=$(whiptail --inputbox --title "Installation from local source" "Path to local tarball" 10 70 3>&1 1>&2 2>&3)            
+            remove_tarball_after_installation=$( local_or_remote_source=$(whiptail \
+                                                --title "$name"  \
+                                                --menu "Remove compressed files after installation?" \
+                                                15 60 4 \
+                                                "1" "Yes" \
+                                                "2" "No" \
+                                                3>&1 1>&2 2>&3))
 
+            filename=$(ls $working_directory/"$input_package_name"/)
+            echo "Ans " "$remove_tarball_after_installation"
+
+            # Check which is compression used
+            if [[ $filename = *.tar.gz ]]; then # If gz compression do this
+                echo ".gz file compression detected"
+                tar zxvf "$path_to_local_tarball" --directory=$working_directory/"$input_package_name"/   # Decompress tarball
+                rm $working_directory/"$input_package_name"/"$filename"                                   # Remove compressed file
+                install_package_from_source                 
+
+
+
+
+
+
+            elif [[ $path_to_local_tarball = *.tar.bz2 ]]; then # If bz2 compression do this
+                echo ".bz2 file compression detected"
+                tar jxvf "$path_to_local_tarball" --directory=$working_directory/"$input_package_name"/
+                rm $working_directory/"$input_package_name"/"$filename"
+                install_package_from_source      
+
+
+
+
+
+
+            elif [[ $filename = *.tar.xz ]]; then # If xz compression do this
+                echo ".xz file compression detected"
+                tar jxvf "$path_to_local_tarball" --directory=$working_directory/"$input_package_name"/   # Decompress tarball
+                rm $working_directory/"$input_package_name"/"$filename"
+                install_package_from_source      
+
+            else
+                echo "This package manager does not support extration of $path_to_local_tarball"
+                rm -rf "$filename"
+            fi
+        ;;
         2)
             # Remote tarball installation
+            check_if_runned_as_root
             link_to_remote_tarball=$(whiptail --inputbox --title "Installation with dpkg/rpm" "Link to remote tarball" 10 70 3>&1 1>&2 2>&3)
             if ! wget -P $working_directory/"$input_package_name" "$link_to_remote_tarball"; then
                 clean_up
                 exit 5
             fi
+
             filename=$(ls $working_directory/"$input_package_name"/)
 
             # Check which is compression used
-            if [[ $filename = *.tar.gz ]]; then
+            if [[ $filename = *.tar.gz ]]; then # If gz compression do this
                 echo ".gz file compression detected"
-                tar zxvf $working_directory/"$input_package_name"/"$filename"
+                tar zxvf $working_directory/"$input_package_name"/"$filename" --directory=$working_directory/"$input_package_name"/   # Decompress tarball
+                rm $working_directory/"$input_package_name"/"$filename"                                                               # Remove compressed file
+                install_package_from_source                 
 
-            elif [[ $filename = *.tar.bz2 ]]; then
+            elif [[ $filename = *.tar.bz2 ]]; then # If bz2 compression do this
                 echo ".bz2 file compression detected"
                 tar jxvf $working_directory/"$input_package_name"/"$filename" --directory=$working_directory/"$input_package_name"/
                 rm $working_directory/"$input_package_name"/"$filename"
-                extraction_directory=$(ls $working_directory/"$input_package_name"/)
-                echo "ECEX: " "$extraction_directory"
-                cd $working_directory/"$input_package_name"/"$extraction_directory" || exit
-                ./configure
+                install_package_from_source      
 
-                if cd $working_directory/"$input_package_name"/"$extraction_directory" || exit; make; then
-                    echo "Dependency requirement met"
-                    make install
-                else
-                    echo "Install required dependencies and run script again"
-                    exit 6
-                fi
-                
-
-            elif [[ $filename = *.tar.xz ]]; then
+            elif [[ $filename = *.tar.xz ]]; then # If xz compression do this
                 echo ".xz file compression detected"
-                tar jxvf "$filename"
+                tar jxvf $working_directory/"$input_package_name"/"$filename" --directory=$working_directory/"$input_package_name"/   # Decompress tarball
+                rm $working_directory/"$input_package_name"/"$filename"
+                install_package_from_source      
 
             else
                 echo "This package manager does not support extration of $filename"
                 rm -rf "$filename"
             fi
-
         ;;
         esac
-        ;;
+    ;;
 
 # Install with dpkg/rpm
     2)  
