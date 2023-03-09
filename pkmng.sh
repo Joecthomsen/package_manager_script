@@ -186,10 +186,12 @@ installation_method=$(whiptail \
                 exit 3
             fi
         fi
-        if find $working_directory/"$input_package_name"/*.deb; then
-            filename=$(find $working_directory/"$input_package_name"/*.deb)
-            if dpkg -i "$filename"; then
-                echo "Installation successfull"
+            if find $working_directory/"$input_package_name"/*.deb; then
+                filename=$(find $working_directory/"$input_package_name"/*.deb)
+                echo ll : $($working_directory/"$input_package_name")
+                if dpkg -i "$filename"; then
+                    echo "Installation successfull"
+               # else dpkg -P "$filename";
             fi
         fi
         ;;
